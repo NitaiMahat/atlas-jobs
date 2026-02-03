@@ -41,6 +41,9 @@ public class Job {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    @Column(name = "next_run_at", nullable = false)
+    private OffsetDateTime nextRunAt;
+
     protected Job() {
 
     }
@@ -55,6 +58,8 @@ public class Job {
         this.idempotencyKey = idempotencyKey;
         this.createdAt = OffsetDateTime.now();
         this.updatedAt = this.createdAt;
+        this.nextRunAt = this.createdAt;
+
     }
 
     // Getters
@@ -68,7 +73,7 @@ public class Job {
     public String getLastError() { return lastError; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
-
+    public OffsetDateTime getNextRunAt(){return nextRunAt;}
     // Small helpers
     public void markRunning() {
         this.status = JobStatus.RUNNING;
@@ -83,6 +88,7 @@ public class Job {
     public void markFailed(String error) {
         this.status = JobStatus.FAILED;
         this.lastError = error;
+        this.attemptCount +=1;
         this.updatedAt = OffsetDateTime.now();
     }
 }
