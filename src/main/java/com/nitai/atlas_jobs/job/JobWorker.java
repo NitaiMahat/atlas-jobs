@@ -23,7 +23,7 @@ public class JobWorker {
                 jobExecutor.execute(job);
                 job.markSucceeded();
             } catch (Exception e) {
-                job.markFailed(e.getMessage());
+                job.onFailureAndScheduleRetry(e.getMessage());
             }
 
             jobRepository.save(job);

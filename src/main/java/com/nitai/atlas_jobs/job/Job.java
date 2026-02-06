@@ -85,10 +85,28 @@ public class Job {
         this.updatedAt = OffsetDateTime.now();
     }
 
-    public void markFailed(String error) {
-        this.status = JobStatus.FAILED;
+    public void onFailureAndScheduleRetry(String error) {
         this.lastError = error;
-        this.attemptCount +=1;
+        this.attemptCount += 1;
         this.updatedAt = OffsetDateTime.now();
+
+
+        if (this.attemptCount >= this.maxAttempts) {
+            this.status = JobStatus.DEAD_LETTERED;
+            return;
+        }
+
+
+        long delaySeconds = computeBackoffSeconds(this.attemptCount);
+        this.nextRunAt = OffsetDateTime.now().plusSeconds(delaySeconds);
+        this.status = JobStatus.QUEUED;
     }
+
+    private long computeBackoffSeconds(int attemptCount) {
+
+        long base = 5L;
+        long delay = (long) (base * Math.pow(3, Math.max(0, attemptCount - 1)));
+        return Math.min(delay, 300L);
+    }
+
 }

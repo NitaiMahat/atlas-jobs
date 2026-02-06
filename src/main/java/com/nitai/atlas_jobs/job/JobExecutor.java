@@ -5,6 +5,7 @@ public class JobExecutor {
     public void execute(Job job) throws Exception {
         switch (job.getJobType()) {
             case "SLEEP_JOB" -> runSleep(job);
+            case "FAIL_JOB" -> { throw new RuntimeException("Intentional failure for testing"); }
             default -> throw new IllegalArgumentException("Unknown job type: " + job.getJobType());
         }
     }
