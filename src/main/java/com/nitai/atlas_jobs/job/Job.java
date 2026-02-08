@@ -44,6 +44,9 @@ public class Job {
     @Column(name = "next_run_at", nullable = false)
     private OffsetDateTime nextRunAt;
 
+    @Column(name = "worker_id", length = 64)
+    private String workerId;
+
     protected Job() {
 
     }
@@ -74,11 +77,16 @@ public class Job {
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public OffsetDateTime getNextRunAt(){return nextRunAt;}
+    public String getWorkerId(){return workerId;}
+
+
     // Small helpers
-    public void markRunning() {
+    public void markRunning(String workerId) {
         this.status = JobStatus.RUNNING;
+        this.workerId = workerId;
         this.updatedAt = OffsetDateTime.now();
     }
+
 
     public void markSucceeded() {
         this.status = JobStatus.SUCCEEDED;

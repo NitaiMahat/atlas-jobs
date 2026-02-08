@@ -3,6 +3,8 @@ spring:
     url: jdbc:postgresql://localhost:5432/atlas_jobs
     username: atlas
     password: atlas
+  atlas:
+    worker-id: ${ATLAS_WORKER_ID:}
 
   jpa:
     hibernate:
