@@ -243,10 +243,4 @@ Jobs will be distributed safely across workers.
 
 ---
 
-## License
 
-[Add your license here]
-
-## Contributing
-
-[Add contribution guidelines here]
