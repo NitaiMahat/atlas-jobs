@@ -4,6 +4,7 @@ import com.nitai.atlas_jobs.job.JobRepository;
 import com.nitai.atlas_jobs.job.JobStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.*;
@@ -18,38 +19,38 @@ public class DebugController {
         this.jobRepository = jobRepository;
     }
 
-    /**
-     * Example response shape:
-     * {
-     *   "worker-8080": { "SUCCEEDED": 12, "DEAD_LETTERED": 1 },
-     *   "worker-8081": { "SUCCEEDED": 9 }
-     * }
-     */
+
     @GetMapping("/workers")
-    public Map<String, Map<JobStatus, Long>> workerStats() {
-        List<WorkerJobCount> rows = jobRepository.countJobsByWorkerAndStatus();
+    public Map<String, Map<JobStatus, Long>> workerStats(
+            @RequestParam(value = "sinceMinutes", required = false) Integer sinceMinutes
+    ) {
+        List<WorkerJobCount> rows = (sinceMinutes == null)
+                ? jobRepository.countJobsByWorkerAndStatus()
+                : jobRepository.countJobsByWorkerAndStatusSince(sinceMinutes);
 
         Map<String, Map<JobStatus, Long>> result = new LinkedHashMap<>();
         for (WorkerJobCount row : rows) {
             result
-                    .computeIfAbsent(row.workerId(), k -> new EnumMap<>(JobStatus.class))
-                    .put(row.status(), row.count());
+                    .computeIfAbsent(row.getWorkerId(), k -> new EnumMap<>(JobStatus.class))
+                    .put(row.getStatus(), row.getCount());
         }
         return result;
     }
 
-    /**
-     * Example response:
-     * { "QUEUED": 3, "RUNNING": 0, "SUCCEEDED": 21, "DEAD_LETTERED": 1 }
-     */
+
+
     @GetMapping("/workers/summary")
-    public Map<JobStatus, Long> summary() {
-        List<Object[]> rows = jobRepository.countJobsByStatus();
+    public Map<JobStatus, Long> summary(
+            @RequestParam(name = "sinceMinutes", required = false) Integer sinceMinutes
+    ) {
+        List<Object[]> rows = (sinceMinutes == null)
+                ? jobRepository.countJobsByStatus()
+                : jobRepository.countJobsByStatusSince(sinceMinutes);
 
         Map<JobStatus, Long> result = new EnumMap<>(JobStatus.class);
         for (Object[] row : rows) {
-            JobStatus status = (JobStatus) row[0];
-            Long count = (Long) row[1];
+            JobStatus status = JobStatus.valueOf(row[0].toString());
+            long count = ((Number) row[1]).longValue();
             result.put(status, count);
         }
         return result;

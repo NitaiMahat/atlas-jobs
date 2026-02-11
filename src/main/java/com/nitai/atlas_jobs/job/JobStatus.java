@@ -4,6 +4,8 @@ public enum JobStatus {
     QUEUED,
     RUNNING,
     SUCCEEDED,
-    FAILED,
+    FAILED,//Job failed intregation ongoing
+
     DEAD_LETTERED
+
 }
