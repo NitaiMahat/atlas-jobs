@@ -16,7 +16,7 @@ public class JobClaimService {
         this.workerId = workerId;
     }
 
-    @Transactional
+
     public Optional<Job> claimNextJob() {
         Optional<Job> maybeJob = jobRepository.claimNextQueuedJob();
         if (maybeJob.isEmpty()) return Optional.empty();

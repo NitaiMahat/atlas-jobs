@@ -78,4 +78,64 @@ public interface JobRepository extends JpaRepository<Job, UUID> {
             nativeQuery = true
     )
     List<WorkerJobCount> countJobsByWorkerAndStatusSince(@Param("sinceMinutes") int sinceMinutes);
+
+
+
+    @Query(
+            value = """
+            SELECT attempt_count, COUNT(*)
+            FROM jobs
+            GROUP BY attempt_count
+            ORDER BY attempt_count
+        """,
+            nativeQuery = true
+    )
+    List<Object[]> countJobsByAttemptCount();
+
+    /**
+     * Jobs that are QUEUED but not eligible yet (scheduled for the future).
+     */
+    @Query(
+            value = """
+            SELECT COUNT(*)
+            FROM jobs
+            WHERE status = 'QUEUED'
+              AND next_run_at > now()
+        """,
+            nativeQuery = true
+    )
+    long countScheduledForRetry();
+
+    /**
+     * Recent activity window using updated_at (best signal for "processed recently").
+     */
+    @Query(
+            value = """
+            SELECT status, COUNT(*)
+            FROM jobs
+            WHERE updated_at >= now() - make_interval(mins => :sinceMinutes)
+            GROUP BY status
+        """,
+            nativeQuery = true
+    )
+    List<Object[]> countJobsByStatusUpdatedSince(@Param("sinceMinutes") int sinceMinutes);
+
+    @Query(
+            value = """
+            SELECT
+              COALESCE(worker_id, 'unassigned') AS workerId,
+              status AS status,
+              COUNT(*) AS count
+            FROM jobs
+            WHERE updated_at >= now() - make_interval(mins => :sinceMinutes)
+            GROUP BY COALESCE(worker_id, 'unassigned'), status
+            ORDER BY workerId, status
+        """,
+            nativeQuery = true
+    )
+    List<WorkerJobCount> countJobsByWorkerAndStatusUpdatedSince(@Param("sinceMinutes") int sinceMinutes);
+
+
+
+
 }

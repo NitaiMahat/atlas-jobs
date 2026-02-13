@@ -22,15 +22,19 @@ public class JobWorker {
     @Scheduled(fixedDelay = 2000)
     @Transactional
     public void pollAndExecuteOne() {
-        jobClaimService.claimNextJob().ifPresent(job -> {
-            try {
-                jobExecutor.execute(job);
-                job.markSucceeded();
-            } catch (Exception e) {
-                job.onFailureAndScheduleRetry(e.getMessage());
-            }
+        var maybeJob = jobClaimService.claimNextJob();
+        if (maybeJob.isEmpty()) return;
 
-            jobRepository.save(job);
-        });
+        Job job = maybeJob.get();
+
+        try {
+            jobExecutor.execute(job);
+            job.markSucceeded();
+        } catch (Exception e) {
+            job.onFailureAndScheduleRetry(e.getMessage());
+        }
+
+        jobRepository.saveAndFlush(job);
     }
+
 }

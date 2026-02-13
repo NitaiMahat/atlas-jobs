@@ -3,7 +3,7 @@ package com.nitai.atlas_jobs.job;
 import jakarta.persistence.*;
 import java.time.OffsetDateTime;
 import java.util.UUID;
-
+import java.util.concurrent.ThreadLocalRandom;
 @Entity
 @Table(name = "jobs")
 public class Job {
@@ -111,10 +111,14 @@ public class Job {
     }
 
     private long computeBackoffSeconds(int attemptCount) {
-
         long base = 5L;
         long delay = (long) (base * Math.pow(3, Math.max(0, attemptCount - 1)));
-        return Math.min(delay, 300L);
+        delay = Math.min(delay, 300L);
+
+        double jitter = 0.7 + 0.3 * ThreadLocalRandom.current().nextDouble();
+        delay = (long) (delay * jitter);
+
+        return Math.max(1L, delay);
     }
 
 }
