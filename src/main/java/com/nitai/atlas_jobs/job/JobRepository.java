@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,7 +27,20 @@ public interface JobRepository extends JpaRepository<Job, UUID> {
             nativeQuery = true
     )
     Optional<Job> claimNextQueuedJob();
-
+    @Query(
+            value = """
+        SELECT *
+        FROM jobs
+        WHERE status = 'RUNNING'
+          AND (
+               (started_at IS NOT NULL AND started_at < :olderThan)
+            OR (started_at IS NULL AND updated_at < :olderThan)
+          )
+        ORDER BY COALESCE(started_at, updated_at)
+    """,
+            nativeQuery = true
+    )
+    List<Job> findStaleRunningJobs(@Param("olderThan") OffsetDateTime olderThan);
 
     @Query(
             value = """

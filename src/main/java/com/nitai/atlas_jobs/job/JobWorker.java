@@ -3,25 +3,27 @@ package com.nitai.atlas_jobs.job;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-
+import java.util.UUID;
 @Component
 public class JobWorker {
-
+    private final WorkerShutdownLatch shutdownLatch;
     private final JobClaimService jobClaimService;
     private final JobRepository jobRepository;
     private final JobExecutor jobExecutor;
 
     public JobWorker(JobClaimService jobClaimService,
                      JobRepository jobRepository,
-                     JobExecutor jobExecutor) {
+                     JobExecutor jobExecutor,
+                     WorkerShutdownLatch shutdownLatch){
         this.jobClaimService = jobClaimService;
         this.jobRepository = jobRepository;
         this.jobExecutor = jobExecutor;
+        this.shutdownLatch = shutdownLatch;
     }
 
     @Scheduled(fixedDelay = 2000)
-    @Transactional
     public void pollAndExecuteOne() {
+        if (shutdownLatch.isShuttingDown()) return;
         var maybeJob = jobClaimService.claimNextJob();
         if (maybeJob.isEmpty()) return;
 
@@ -29,11 +31,25 @@ public class JobWorker {
 
         try {
             jobExecutor.execute(job);
-            job.markSucceeded();
+            completeSuccess(job.getJobId());
         } catch (Exception e) {
-            job.onFailureAndScheduleRetry(e.getMessage());
+            completeFailure(job.getJobId(), e.getMessage());
         }
+    }
 
+    @Transactional
+    public void completeSuccess(UUID jobId) {
+        Job job = jobRepository.findById(jobId).orElseThrow();
+        if (job.getStatus() != JobStatus.RUNNING) return;
+        job.markSucceeded();
+        jobRepository.saveAndFlush(job);
+    }
+
+    @Transactional
+    public void completeFailure(UUID jobId, String error) {
+        Job job = jobRepository.findById(jobId).orElseThrow();
+        if (job.getStatus() != JobStatus.RUNNING) return;
+        job.onFailureAndScheduleRetry(error);
         jobRepository.saveAndFlush(job);
     }
 

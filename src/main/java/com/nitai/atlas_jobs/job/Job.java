@@ -47,6 +47,10 @@ public class Job {
     @Column(name = "worker_id", length = 64)
     private String workerId;
 
+    @Column(name = "started_at")
+    private OffsetDateTime startedAt;
+
+
     protected Job() {
 
     }
@@ -78,13 +82,14 @@ public class Job {
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public OffsetDateTime getNextRunAt(){return nextRunAt;}
     public String getWorkerId(){return workerId;}
-
+    public OffsetDateTime getStartedAt() { return startedAt; }
 
     // Small helpers
     public void markRunning(String workerId) {
         this.status = JobStatus.RUNNING;
         this.workerId = workerId;
-        this.updatedAt = OffsetDateTime.now();
+        this.startedAt = OffsetDateTime.now();
+        this.updatedAt = this.startedAt;
     }
 
 

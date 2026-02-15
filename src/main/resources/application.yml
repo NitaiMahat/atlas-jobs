@@ -5,14 +5,20 @@ spring:
     password: atlas
   atlas:
     worker-id: ${ATLAS_WORKER_ID:}
-
+    jobs:
+      run-timeout-minutes: 15
+      stale-recovery-interval-ms: 60000
   jpa:
     hibernate:
       ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
-
+  task:
+    scheduling:
+      shutdown:
+        await-termination: true
+        await-termination-period: 30s
   flyway:
     enabled: true
 
