@@ -1,9 +1,11 @@
 package com.nitai.atlas_jobs.job;
 
-import org.springframework.transaction.annotation.Transactional;
 import com.nitai.atlas_jobs.job.api.CreateJobRequest;
-import org.springframework.stereotype.Service;
+import com.nitai.atlas_jobs.job.payload.PayloadParser;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,9 +14,11 @@ import java.util.UUID;
 public class JobService {
 
     private final JobRepository jobRepository;
+    private final PayloadParser payloadParser;
 
-    public JobService(JobRepository jobRepository) {
+    public JobService(JobRepository jobRepository, PayloadParser payloadParser) {
         this.jobRepository = jobRepository;
+        this.payloadParser = payloadParser;
     }
 
     public Job createJob(CreateJobRequest request, String idempotencyKey) {
@@ -25,6 +29,8 @@ public class JobService {
                 return existing.get();
             }
         }
+
+        validatePayloadForType(request);
 
         int maxAttempts = (request.getMaxAttempts() == null) ? 3 : request.getMaxAttempts();
 
@@ -40,10 +46,20 @@ public class JobService {
         return jobRepository.save(job);
     }
 
+    private void validatePayloadForType(CreateJobRequest request) {
+        String jobType = request.getJobType();
+        switch (jobType) {
+            case "SLEEP_JOB" -> payloadParser.parseSleepPayload(request.getPayload());
+            case "FAIL_JOB" -> payloadParser.parseFailPayload(request.getPayload());
+            default -> throw new InvalidJobPayloadException("Unknown job type: " + jobType);
+        }
+    }
+
     public Job getJob(UUID jobId) {
         return jobRepository.findById(jobId)
-                .orElseThrow(() -> new com.nitai.atlas_jobs.job.JobNotFoundException(jobId));
+                .orElseThrow(() -> new JobNotFoundException(jobId));
     }
+
     @Transactional
     public Job requeueDeadLetter(UUID jobId) {
         Job job = jobRepository.findById(jobId)
@@ -56,6 +72,7 @@ public class JobService {
         job.requeueFromDeadLetter();
         return jobRepository.save(job);
     }
+
     @Transactional
     public int requeueDeadLetters(int limit) {
         int safeLimit = Math.max(1, Math.min(limit, 1000));
@@ -71,5 +88,4 @@ public class JobService {
         jobRepository.saveAll(jobs);
         return jobs.size();
     }
-
 }

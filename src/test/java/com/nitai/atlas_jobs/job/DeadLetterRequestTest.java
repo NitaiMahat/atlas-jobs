@@ -43,7 +43,7 @@ class DeadLetterRequeueTest extends AbstractPostgresTest {
         assertThat(requeued.getNextRunAt()).isAfterOrEqualTo(before);
         assertThat(requeued.getNextRunAt()).isBeforeOrEqualTo(after);
 
-        // adjust based on your chosen behavior
+
         assertThat(requeued.getAttemptCount()).isEqualTo(0);
         assertThat(requeued.getLastError()).isNull();
     }

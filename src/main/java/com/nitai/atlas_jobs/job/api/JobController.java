@@ -7,7 +7,7 @@ import com.nitai.atlas_jobs.job.JobService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
-
+import com.nitai.atlas_jobs.job.InvalidJobPayloadException;
 import java.util.UUID;
 
 @RestController
@@ -49,6 +49,11 @@ public class JobController {
     @ExceptionHandler(JobNotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public String handleNotFound(JobNotFoundException ex) {
+        return ex.getMessage();
+    }
+    @ExceptionHandler(InvalidJobPayloadException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public String handleInvalidPayload(InvalidJobPayloadException ex) {
         return ex.getMessage();
     }
 
