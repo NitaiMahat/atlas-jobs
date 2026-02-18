@@ -1,6 +1,7 @@
 package com.nitai.atlas_jobs.job.api;
 
 import com.nitai.atlas_jobs.job.Job;
+import com.nitai.atlas_jobs.job.JobNotDeadLetteredException;
 import com.nitai.atlas_jobs.job.JobNotFoundException;
 import com.nitai.atlas_jobs.job.JobService;
 import jakarta.validation.Valid;
@@ -34,10 +35,21 @@ public class JobController {
         Job job = jobService.getJob(jobId);
         return JobResponse.from(job);
     }
+    @PostMapping("/{jobId}/requeue")
+    public JobResponse requeueJob(@PathVariable UUID jobId) {
+        Job job = jobService.requeueDeadLetter(jobId);
+        return JobResponse.from(job);
+    }
+    @ExceptionHandler(JobNotDeadLetteredException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public String handleNotDeadLettered(JobNotDeadLetteredException ex) {
+        return ex.getMessage();
+    }
 
     @ExceptionHandler(JobNotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public String handleNotFound(JobNotFoundException ex) {
         return ex.getMessage();
     }
+
 }

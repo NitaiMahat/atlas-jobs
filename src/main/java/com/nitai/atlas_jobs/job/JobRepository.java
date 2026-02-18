@@ -4,7 +4,7 @@ import com.nitai.atlas_jobs.job.api.WorkerJobCount;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-
+import org.springframework.data.domain.Pageable;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -149,7 +149,7 @@ public interface JobRepository extends JpaRepository<Job, UUID> {
     )
     List<WorkerJobCount> countJobsByWorkerAndStatusUpdatedSince(@Param("sinceMinutes") int sinceMinutes);
 
-
+    List<Job> findByStatusOrderByUpdatedAtAsc(JobStatus status, Pageable pageable);
 
 
 }

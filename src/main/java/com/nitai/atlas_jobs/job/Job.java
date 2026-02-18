@@ -92,7 +92,15 @@ public class Job {
         this.updatedAt = this.startedAt;
     }
 
-
+    public void requeueFromDeadLetter() {
+        this.status = JobStatus.QUEUED;
+        this.attemptCount = 0;
+        this.lastError = null;
+        this.workerId = null;
+        this.startedAt = null;
+        this.nextRunAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now();
+    }
     public void markSucceeded() {
         this.status = JobStatus.SUCCEEDED;
         this.updatedAt = OffsetDateTime.now();
