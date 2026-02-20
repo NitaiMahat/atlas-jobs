@@ -35,6 +35,6 @@ build/
 # OS
 .DS_Store
 Thumbs.db
-
+.m2/
 # secrets
 .env

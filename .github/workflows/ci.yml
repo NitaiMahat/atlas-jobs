@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: atlas_jobs
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas -d atlas_jobs"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+          cache: "maven"
+
+      - name: Ensure mvnw is executable
+        run: chmod +x mvnw
+
+      - name: Flyway validate
+        run: >
+          ./mvnw -B -ntp
+          -Dflyway.url=jdbc:postgresql://localhost:5432/atlas_jobs
+          -Dflyway.user=atlas
+          -Dflyway.password=atlas
+          -Dflyway.locations=filesystem:src/main/resources/db/migration
+          org.flywaydb:flyway-maven-plugin:11.14.1:validate
+
+      - name: Build and test
+        run: ./mvnw -B -ntp verify
