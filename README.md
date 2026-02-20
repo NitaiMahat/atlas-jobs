@@ -1,122 +1,77 @@
 # Atlas Jobs
 
-A distributed background job processing platform built with Spring Boot and PostgreSQL.
-
-Atlas Jobs allows clients to submit jobs via an HTTP API, processes them asynchronously using one or more workers, retries failed jobs with exponential backoff, and safely dead-letters jobs that permanently fail.
-
-This project is designed to model **real-world backend job systems** used in production environments.
+A distributed background job processing platform built with **Spring Boot** and **PostgreSQL**. Clients submit jobs over HTTP, jobs are stored in the database, and one or more workers poll and execute them asynchronously. Failed jobs are retried with exponential backoff and jitter, and permanently failing jobs are dead-lettered.
 
 ---
 
 ## Table of Contents
 
-- [Current Status](#current-status)
-- [What the System Does](#what-the-system-does)
-- [Why a Job Queue?](#why-a-job-queue)
-- [System Architecture](#system-architecture)
-- [Job Lifecycle](#job-lifecycle)
-- [Safe Multi-Worker Processing](#safe-multi-worker-processing)
-- [Retry Logic & Exponential Backoff](#retry-logic--exponential-backoff)
+- [What This Project Does](#what-this-project-does)
+- [Why a Job Queue Is Useful](#why-a-job-queue-is-useful)
+- [How It Works (End-to-End)](#how-it-works-end-to-end)
+- [Core Features](#core-features)
+- [API Endpoints](#api-endpoints)
+- [Job Types and Payloads](#job-types-and-payloads)
+- [Retry Logic and Backoff](#retry-logic-and-backoff)
+- [Dead Letters and Requeue](#dead-letters-and-requeue)
+- [Stale Job Recovery](#stale-job-recovery)
 - [Idempotency](#idempotency)
-- [Database Schema](#database-schema)
-- [Testing](#testing)
-- [Observability & Debugging](#observability--debugging)
-- [Technologies Used](#technologies-used)
+- [Observability and Metrics](#observability-and-metrics)
+- [Security and Rate Limiting](#security-and-rate-limiting)
+- [Database Schema and Migrations](#database-schema-and-migrations)
+- [Configuration](#configuration)
 - [Running Locally](#running-locally)
 - [Running Multiple Workers](#running-multiple-workers)
 - [Running Tests](#running-tests)
+- [CI Pipeline](#ci-pipeline)
+- [Tech Stack](#tech-stack)
+- [License](#license)
 
 ---
 
-## Current Status
+## What This Project Does
 
-✅ Job submission via REST API  
-✅ Persistent job storage using PostgreSQL  
-✅ Database schema management with Flyway  
-✅ Asynchronous job processing using workers  
-✅ **Multiple worker instances running concurrently**  
-✅ **Safe job claiming using row-level locking**  
-✅ Retry logic with exponential backoff **and jitter** to prevent retry storms  
-✅ Dead-letter handling for permanently failed jobs  
-✅ Idempotent job creation to prevent duplicates  
-✅ Worker ownership tracking (`worker_id`)  
-✅ Debug endpoints for worker observability  
-✅ Metrics endpoint with status counts, worker breakdown, attempt distribution, and recent activity window  
-✅ **Integration tests using Testcontainers (real PostgreSQL)**  
-✅ Dockerized local development setup
+Atlas Jobs provides a complete background job processing pipeline:
 
----
-
-## What the System Does
-
-- Accepts background jobs through an HTTP API
-- Stores jobs reliably in the database
+- Accepts job submissions via HTTP (`POST /jobs`)
+- Persists jobs in PostgreSQL
 - Executes jobs asynchronously outside the request lifecycle
-- Retries failed jobs automatically with increasing delays and jitter
-- Prevents duplicate job execution using idempotency keys
-- Safely distributes jobs across multiple workers
-- Records which worker processed each job for observability
+- Retries failed jobs with exponential backoff and jitter
+- Dead-letters jobs that exceed retry limits
+- Supports multiple workers running concurrently with safe database locking
+- Tracks worker ownership for observability
+- Exposes debug and metrics endpoints for visibility
+- Enforces optional basic auth and rate limiting
+- Includes full integration testing with Testcontainers
 
 ---
 
-## Why a Job Queue?
+## Why a Job Queue Is Useful
 
-Instead of executing work directly inside an HTTP request:
+Running work **inside** an HTTP request is risky — the API stays open and can time out, failures are hard to retry safely, long-running tasks slow down user responses, and scaling becomes difficult.
 
-- The API responds quickly
-- Long-running or unreliable work runs in the background
-- Failures can be retried safely
-- The system scales horizontally by adding workers
-
-This pattern is commonly used for:
-
-- Email sending
-- Payment processing
-- File processing
-- External API calls
-- Event-driven workflows
+A background job system solves this: the API responds quickly, work executes asynchronously and safely, failures can be retried with controlled timing, and you can scale workers horizontally without coordination services.
 
 ---
 
-## System Architecture
+## How It Works (End-to-End)
 
-```
-Client
-  |
-  | POST /jobs
-  v
-Spring Boot API
-  |
-  | Persist job
-  v
-PostgreSQL (jobs table)
-  |
-  | Poll + lock (FOR UPDATE SKIP LOCKED)
-  v
-Worker 1 / Worker 2 / Worker N
-  |
-  | Execute job
-  v
-Update job status
-```
+1. **Client submits a job** via `POST /jobs`
+2. **Job is stored** in the `jobs` table with status `QUEUED`
+3. **Worker polls** every 2 seconds for the next eligible job
+4. **Worker safely claims the job** using `FOR UPDATE SKIP LOCKED`
+5. **Worker executes the job** based on `job_type`
+6. **Success** → status becomes `SUCCEEDED`
+7. **Failure** → attempt count increments, job is rescheduled with backoff
+8. **Max attempts reached** → job becomes `DEAD_LETTERED`
 
 ---
 
-## Job Lifecycle
+## Core Features
 
-Each job progresses through the following states:
+### Safe Multi-Worker Processing
 
-- `QUEUED → RUNNING → SUCCEEDED`
-- `QUEUED → RUNNING → FAILED → RETRIED`
-- `FAILED → DEAD_LETTERED` (after max retries)
-
----
-
-## Safe Multi-Worker Processing
-
-Atlas Jobs supports **multiple worker instances running at the same time**.
-
-Workers safely claim jobs using PostgreSQL row-level locking:
+Workers use a single SQL query with row-level locking:
 
 ```sql
 SELECT *
@@ -128,161 +83,270 @@ FOR UPDATE SKIP LOCKED
 LIMIT 1;
 ```
 
-This guarantees:
+This ensures no two workers ever process the same job, workers can scale horizontally without Redis or ZooKeeper, and the database remains the single source of truth.
 
-- No two workers ever process the same job
-- Workers can scale horizontally
-- No coordination service (Redis/Zookeeper) is required
-- The database is the source of truth
+### Asynchronous Worker Execution
 
-Each job records the `worker_id` that claimed it.
+`JobWorker` polls every 2 seconds. Each poll claims at most one job. Execution time is measured for metrics, and shutdown is graceful — the worker stops polling when the app shuts down.
+
+### Payload Validation
+
+Payload is stored as a raw JSON string and parsed/validated by job type:
+
+- `SLEEP_JOB` — `sleepSeconds` must be 1–300
+- `FAIL_JOB` — optional failure message
+
+Invalid payloads return a `400` response.
+
+### Rate Limiting (In-Memory)
+
+Per-client IP, 60-second window. `POST /jobs` is limited by `atlas.rate-limit.jobs-per-minute`. Requeue endpoints are limited by `atlas.rate-limit.requeue-per-minute`. Uses `X-Forwarded-For` when present.
+
+### Basic Auth (Optional)
+
+When `atlas.security.enabled=true`, HTTP Basic is required for `/debug/**`, `/metrics`, and `/actuator/**`. Credentials are configured via `atlas.security.user` / `atlas.security.password`.
 
 ---
 
-## Retry Logic & Exponential Backoff
+## API Endpoints
 
-When a job fails:
-
-1. `attempt_count` is incremented
-2. If `attempt_count < max_attempts`:
-   - The job is re-queued
-   - `next_run_at` is scheduled in the future using exponential backoff with jitter
-3. If `attempt_count == max_attempts`:
-   - The job is marked `DEAD_LETTERED`
-
-### Backoff Formula
+### Create Job
 
 ```
-delay = base × 3^(attempt - 1)    (capped at 300s)
-jitter = delay × random(0.7 – 1.0)
+POST /jobs
 ```
 
-Each retry delay is randomized within 70–100% of the nominal value. This prevents thundering herd — if 500 jobs fail at the same time, they won't all retry at the exact same moment.
+**Request body:**
 
-### Backoff Schedule (Example)
+```json
+{
+  "jobType": "SLEEP_JOB",
+  "payload": "{\"sleepSeconds\": 5}",
+  "maxAttempts": 3
+}
+```
 
-| Attempt | Nominal Delay | With Jitter (range)   |
-|---------|---------------|-----------------------|
-| Retry 1 | 5 seconds     | ~3.5 – 5 seconds      |
-| Retry 2 | 15 seconds    | ~10.5 – 15 seconds    |
-| Retry 3 | 45 seconds    | ~31.5 – 45 seconds    |
-| Retry 4 | 135 seconds   | ~94.5 – 135 seconds   |
-| Retry 5 | 300 seconds   | ~210 – 300 seconds    |
+**Optional header:**
+
+```
+Idempotency-Key: your-key-here
+```
+
+**Response (201):**
+
+```json
+{
+  "jobId": "uuid",
+  "status": "QUEUED",
+  "jobType": "SLEEP_JOB",
+  "attemptCount": 0,
+  "maxAttempts": 3,
+  "createdAt": "2026-02-20T00:00:00Z",
+  "updatedAt": "2026-02-20T00:00:00Z"
+}
+```
+
+### Get Job
+
+```
+GET /jobs/{jobId}
+```
+
+### Requeue Dead-Lettered Job
+
+```
+POST /jobs/{jobId}/requeue
+```
+
+Returns `400` if the job is not dead-lettered.
+
+### Bulk Requeue Dead Letters
+
+```
+POST /dead-letter/retry?limit=100
+```
+
+`limit` is clamped between 1 and 1000. Returns `{ "count": <number requeued> }`.
+
+### Debug Endpoints
+
+```
+GET /debug/workers
+GET /debug/workers/summary?sinceMinutes=<n>
+```
+
+### Metrics
+
+```
+GET /metrics?sinceMinutes=5
+```
+
+Returns `statusCounts`, `byWorker`, `attemptDistribution`, `scheduledForRetry`, recent window counts, `processedLastMinute`, `failuresByJobType`, and `avgDurationSecondsByJobType`.
+
+---
+
+## Job Types and Payloads
+
+### `SLEEP_JOB`
+
+Pauses the worker for N seconds.
+
+```json
+{ "sleepSeconds": 5 }
+```
+
+### `FAIL_JOB`
+
+Always fails — used to test retries and dead-letter behavior.
+
+```json
+{ "message": "fail for testing" }
+```
+
+To add new job types, add parsing and validation in `PayloadParser`, add execution logic in `JobExecutor`, and update this README with examples.
+
+---
+
+## Retry Logic and Backoff
+
+On failure, `attempt_count` increments. If attempts are below max, the job requeues with a delayed `next_run_at`. If attempts reach max, the job becomes `DEAD_LETTERED`.
+
+**Backoff formula:**
+
+```
+delay = base * 3^(attempt - 1), capped at 300s
+jitter = delay * random(0.7..1.0)
+```
+
+Jitter prevents thundering herd retries when many jobs fail at once.
+
+---
+
+## Dead Letters and Requeue
+
+Jobs that exceed `max_attempts` become `DEAD_LETTERED`. You can requeue one job by ID or retry a batch. Requeue resets `attempt_count` to 0, clears `last_error`, clears `worker_id` and `started_at`, and sets `next_run_at` to now.
+
+---
+
+## Stale Job Recovery
+
+If a job is stuck in `RUNNING` too long, it is treated as failed and rescheduled using the standard retry rules.
+
+| Property | Default |
+|---|---|
+| `atlas.jobs.run-timeout-minutes` | `15` |
+| `atlas.jobs.stale-recovery-interval-ms` | `60000` (60s) |
 
 ---
 
 ## Idempotency
 
-Jobs can include an optional `idempotency_key`.
-
-If the same job request is submitted more than once with the same key:
-
-- The existing job is returned
-- No duplicate job is created
-
-This protects against:
-
-- Network retries
-- Client double-submits
-- Accidental duplication
+If an `Idempotency-Key` header is provided, any existing job with that key is returned without creating a new row. A unique index ensures deduplication. This protects against network retries, client double-submits, and race conditions.
 
 ---
 
-## Database Schema
+## Observability and Metrics
+
+**Debug endpoints** — `/debug/workers` shows per-worker job counts by status; `/debug/workers/summary` shows totals by status.
+
+**Metrics endpoint** — `/metrics` includes total counts by status, counts by worker and status, attempt distribution, scheduled retries (queued but not yet eligible), and recent activity over the last N minutes.
+
+**In-memory stats** track processed jobs per last minute, failures by job type, and average duration by job type.
+
+---
+
+## Security and Rate Limiting
+
+### Basic Auth
+
+Enabled by default for `/debug/**`, `/metrics`, and `/actuator/**`.
+
+| Variable | Default |
+|---|---|
+| `ATLAS_SECURITY_USER` | `admin` |
+| `ATLAS_SECURITY_PASSWORD` | `admin123` |
+
+To disable: `atlas.security.enabled=false`
+
+### Rate Limiting
+
+Enabled by default for `POST` requests to `/jobs`, `/jobs/{id}/requeue`, and `/dead-letter/retry`.
+
+| Setting | Default |
+|---|---|
+| Job submits | 60 / minute |
+| Requeues | 30 / minute |
+
+To disable: `atlas.rate-limit.enabled=false`
+
+---
+
+## Database Schema and Migrations
 
 ### `jobs` Table
 
-| Column            | Description                     |
-|-------------------|---------------------------------|
-| `job_id`          | Unique job identifier (UUID)    |
-| `status`          | Current job state               |
-| `job_type`        | Type of job to execute          |
-| `payload`         | Job-specific data               |
-| `attempt_count`   | Number of attempts              |
-| `max_attempts`    | Maximum retries                 |
-| `idempotency_key` | Deduplication key               |
-| `last_error`      | Last failure message            |
-| `next_run_at`     | When job is eligible to run     |
-| `worker_id`       | Worker that claimed the job     |
-| `created_at`      | Creation timestamp              |
-| `updated_at`      | Last update timestamp           |
+| Column | Description |
+|---|---|
+| `job_id` | UUID primary key |
+| `status` | `QUEUED`, `RUNNING`, `SUCCEEDED`, `DEAD_LETTERED` |
+| `job_type` | String job type |
+| `payload` | Raw JSON string |
+| `attempt_count` | Number of attempts |
+| `max_attempts` | Max retries |
+| `idempotency_key` | Optional dedupe key |
+| `last_error` | Last failure message |
+| `next_run_at` | When job can run next |
+| `worker_id` | Worker that claimed the job |
+| `started_at` | When job started running |
+| `created_at` | Creation timestamp |
+| `updated_at` | Last update timestamp |
 
 ### Flyway Migrations
 
-| Version | Description                           |
-|---------|---------------------------------------|
-| V1      | Create jobs table with indexes        |
-| V2      | Change payload from JSONB to TEXT     |
-| V3      | Add `next_run_at` for retry scheduling|
-| V4      | Add `last_error` column               |
-| V5      | Add `worker_id` for ownership tracking|
+- **V1** — Create `jobs` table and indexes
+- **V2** — Change payload from `JSONB` to `TEXT`
+- **V3** — Add `next_run_at`
+- **V4** — Add `last_error`
+- **V5** — Add `worker_id`
+- **V6** — Add `started_at` and index for stale recovery
 
 ---
 
-## Testing
+## Configuration
 
-Atlas Jobs includes integration tests that run against a real PostgreSQL database using **Testcontainers**. No local Postgres installation is required — only Docker.
+```yaml
+spring.datasource.url=jdbc:postgresql://localhost:5432/atlas_jobs
+spring.datasource.username=atlas
+spring.datasource.password=atlas
 
-### Test Suite
+atlas.rate-limit.enabled=true
+atlas.rate-limit.jobs-per-minute=60
+atlas.rate-limit.requeue-per-minute=30
 
-| Test                          | What It Proves                                                                 |
-|-------------------------------|--------------------------------------------------------------------------------|
-| `JobServiceTest`              | Same idempotency key returns the same job; only one row exists in the database |
-| `JobRetryAndDeadLetterTest`   | After one failure: status is QUEUED and `next_run_at` is in the future        |
-| `JobRetryAndDeadLetterTest`   | After max attempts: status is DEAD_LETTERED                                    |
-| `JobClaimConcurrencyTest`     | Two workers claiming 20 jobs concurrently never claim the same job             |
-| `AtlasJobsApplicationTests`   | Spring application context loads successfully                                  |
+atlas.security.enabled=true
+atlas.security.user=admin
+atlas.security.password=admin123
 
-### Test Infrastructure
+atlas.worker-id=<optional>
+atlas.jobs.run-timeout-minutes=15
+atlas.jobs.stale-recovery-interval-ms=60000
+```
 
-- **Testcontainers** spins up a disposable Postgres 16 container per test class
-- **Flyway** runs all migrations automatically against the test database
-- `@DirtiesContext` ensures each test class gets a fresh Spring context and database
-- Scheduling is disabled in tests (`spring.task.scheduling.enabled: false`) to prevent the worker from interfering
-
----
-
-## Observability & Debugging
-
-### Endpoints
-
-| Endpoint                    | Method | Description                                           |
-|-----------------------------|--------|-------------------------------------------------------|
-| `POST /jobs`                | POST   | Submit a new job (with optional `Idempotency-Key` header) |
-| `GET /jobs/{id}`            | GET    | Get job status by ID                                  |
-| `GET /debug/workers`        | GET    | Job counts by worker and status                       |
-| `GET /debug/workers/summary`| GET    | Job counts by status (all workers)                    |
-| `GET /metrics`              | GET    | Full metrics: status counts, worker breakdown, attempt distribution, recent activity |
-
-### Metrics Response
-
-The `/metrics` endpoint returns:
-
-- **`statusCounts`** — all-time job counts by status
-- **`byWorker`** — counts broken down by worker and status
-- **`attemptDistribution`** — how many jobs have 0, 1, 2… attempts
-- **`scheduledForRetry`** — jobs queued but not yet eligible (future `next_run_at`)
-- **`recent`** — status and worker counts for jobs updated in the last N minutes (default 5)
-
----
-
-## Technologies Used
-
-- **Java 21**
-- **Spring Boot 4**
-- **Spring Data JPA**
-- **PostgreSQL 16**
-- **Flyway** (schema migrations)
-- **Docker & Docker Compose**
-- **HikariCP**
-- **Testcontainers** (integration testing)
+> In tests: scheduling, security, and rate limiting are all disabled.
 
 ---
 
 ## Running Locally
 
+Start Postgres:
+
 ```bash
 docker compose up -d
+```
+
+Run the app:
+
+```bash
 ./mvnw spring-boot:run
 ```
 
@@ -302,13 +366,13 @@ export SERVER_PORT=8081
 ./mvnw spring-boot:run
 ```
 
-Jobs will be distributed safely across workers.
+Workers safely share jobs using row-level locks.
 
 ---
 
 ## Running Tests
 
-Requires Docker to be running (Testcontainers starts Postgres automatically).
+Requires Docker — Testcontainers starts Postgres automatically.
 
 ```bash
 ./mvnw test
@@ -316,15 +380,30 @@ Requires Docker to be running (Testcontainers starts Postgres automatically).
 
 ---
 
-## License
+## CI Pipeline
 
-This project is open source and available under the [MIT License](LICENSE).
+GitHub Actions runs:
+
+1. Checkout
+2. JDK 17 setup
+3. Flyway migrate and validate (against a service Postgres)
+4. `mvn verify`
 
 ---
 
-## Contributing
+## Tech Stack
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+| Technology | Version |
+|---|---|
+| Java | 17 |
+| Spring Boot | 4.0.2 |
+| Spring Data JPA | — |
+| Spring Security | — |
+| Flyway | — |
+| PostgreSQL | 16 |
+| Testcontainers | — |
+| Docker & Docker Compose | — |
+| Maven Wrapper | — |
 
 ---
 
