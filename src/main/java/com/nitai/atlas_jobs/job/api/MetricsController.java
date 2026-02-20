@@ -1,5 +1,6 @@
 package com.nitai.atlas_jobs.job.api;
 
+import com.nitai.atlas_jobs.job.JobMetrics;
 import com.nitai.atlas_jobs.job.JobRepository;
 import com.nitai.atlas_jobs.job.JobStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,9 +13,11 @@ import java.util.*;
 public class MetricsController {
 
     private final JobRepository jobRepository;
+    private final JobMetrics jobMetrics;
 
-    public MetricsController(JobRepository jobRepository) {
+    public MetricsController(JobRepository jobRepository, JobMetrics jobMetrics) {
         this.jobRepository = jobRepository;
+        this.jobMetrics = jobMetrics;
     }
 
     @GetMapping("/metrics")
@@ -28,10 +31,10 @@ public class MetricsController {
         // Attempt distribution
         Map<Integer, Long> attemptDist = toAttemptMap(jobRepository.countJobsByAttemptCount());
 
-        // Scheduled retries (queued but not eligible yet)
+        // Scheduled retries
         long scheduledForRetry = jobRepository.countScheduledForRetry();
 
-        // Recent window (based on updated_at)
+        // Recent window
         Map<JobStatus, Long> recentStatus = toStatusMap(jobRepository.countJobsByStatusUpdatedSince(sinceMinutes));
         Map<String, Map<JobStatus, Long>> recentByWorker = toWorkerMap(jobRepository.countJobsByWorkerAndStatusUpdatedSince(sinceMinutes));
 
@@ -41,7 +44,20 @@ public class MetricsController {
                 recentByWorker
         );
 
-        return new MetricsResponse(statusCounts, byWorker, attemptDist, scheduledForRetry, recent);
+        long processedLastMinute = jobMetrics.getProcessedLastMinute();
+        Map<String, Long> failuresByJobType = jobMetrics.getFailuresByJobType();
+        Map<String, Double> avgDurationSecondsByJobType = jobMetrics.getAvgDurationSecondsByJobType();
+
+        return new MetricsResponse(
+                statusCounts,
+                byWorker,
+                attemptDist,
+                scheduledForRetry,
+                recent,
+                processedLastMinute,
+                failuresByJobType,
+                avgDurationSecondsByJobType
+        );
     }
 
     private Map<JobStatus, Long> toStatusMap(List<Object[]> rows) {
@@ -73,5 +89,4 @@ public class MetricsController {
         }
         return result;
     }
-
 }

@@ -3,11 +3,6 @@ spring:
     url: jdbc:postgresql://localhost:5432/atlas_jobs
     username: atlas
     password: atlas
-  atlas:
-    worker-id: ${ATLAS_WORKER_ID:}
-    jobs:
-      run-timeout-minutes: 15
-      stale-recovery-interval-ms: 60000
   jpa:
     hibernate:
       ddl-auto: validate
@@ -22,9 +17,23 @@ spring:
   flyway:
     enabled: true
 
+atlas:
+  rate-limit:
+    enabled: true
+    jobs-per-minute: 60
+    requeue-per-minute: 30
+  security:
+    enabled: true
+    user: ${ATLAS_SECURITY_USER:admin}
+    password: ${ATLAS_SECURITY_PASSWORD:admin123}
+  worker-id: ${ATLAS_WORKER_ID:}
+  jobs:
+    run-timeout-minutes: 15
+    stale-recovery-interval-ms: 60000
+
+
 management:
   endpoints:
     web:
       exposure:
         include: health,info,mappings
-

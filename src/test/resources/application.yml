@@ -2,3 +2,8 @@ spring:
   task:
     scheduling:
       enabled: false
+atlas:
+  security:
+    enabled: false
+  rate-limit:
+    enabled: false

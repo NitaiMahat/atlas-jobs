@@ -9,7 +9,10 @@ public record MetricsResponse(
         Map<String, Map<JobStatus, Long>> byWorker,
         Map<Integer, Long> attemptDistribution,
         long scheduledForRetry,
-        MetricsWindow recent
+        MetricsWindow recent,
+        long processedLastMinute,
+        Map<String, Long> failuresByJobType,
+        Map<String, Double> avgDurationSecondsByJobType
 ) {
     public record MetricsWindow(
             int sinceMinutes,
