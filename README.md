@@ -2,6 +2,13 @@
 
 A distributed background job processing platform built with **Spring Boot** and **PostgreSQL**. Clients submit jobs over HTTP, jobs are stored in the database, and one or more workers poll and execute them asynchronously. Failed jobs are retried with exponential backoff and jitter, and permanently failing jobs are dead-lettered.
 
+> **Highlights (Measured Results)**
+> - **Load test:** 27,000 jobs in 3 minutes (145+ req/s) with 0% errors
+> - **Latency:** P50 ~7ms, P95 ~11–15ms, P99 ~123–205ms
+> - **Scaling:** `SLEEP_JOB` throughput improved from 0.67 → 1.64 jobs/sec scaling workers 1 → 4
+> - **Chaos testing:** worker crash mid-job, DB pause/restart, stale `RUNNING` recovery
+> - **Result:** no job loss, idempotency preserved, retry/dead-letter behavior correct
+
 ---
 
 ## Table of Contents
@@ -9,6 +16,7 @@ A distributed background job processing platform built with **Spring Boot** and 
 - [What This Project Does](#what-this-project-does)
 - [Why a Job Queue Is Useful](#why-a-job-queue-is-useful)
 - [How It Works (End-to-End)](#how-it-works-end-to-end)
+- [Performance & Reliability](#performance--reliability)
 - [Core Features](#core-features)
 - [API Endpoints](#api-endpoints)
 - [Job Types and Payloads](#job-types-and-payloads)
@@ -64,6 +72,36 @@ A background job system solves this: the API responds quickly, work executes asy
 6. **Success** → status becomes `SUCCEEDED`
 7. **Failure** → attempt count increments, job is rescheduled with backoff
 8. **Max attempts reached** → job becomes `DEAD_LETTERED`
+
+---
+
+## Performance & Reliability
+
+### Load Testing (k6)
+
+- 27,000 jobs submitted in 3 minutes at **145+ req/s**
+- P50 ~7ms, P95 ~11–15ms, P99 ~123–205ms
+- **0% errors**
+
+### Scaling Proof (Processing Throughput)
+
+`SLEEP_JOB` has a 1s minimum runtime, so each worker handles ~1 job/sec at most. Scaling workers demonstrates true horizontal throughput gains using only PostgreSQL row-level locking — no Redis or coordination service required.
+
+| Workers | Throughput (jobs/sec) |
+|---|---|
+| 1 | 0.67 |
+| 2 | 0.98 |
+| 4 | 1.64 |
+
+### Chaos Testing (Manual)
+
+Scenarios simulated:
+
+- Worker crash mid-execution
+- DB pause/restart during processing
+- Stale `RUNNING` job recovery
+
+**Result:** no job loss, idempotency preserved, and retry/dead-letter logic behaved correctly in all cases.
 
 ---
 
@@ -399,12 +437,10 @@ GitHub Actions runs:
 | Spring Boot | 4.0.2 |
 | Spring Data JPA | — |
 | Spring Security | — |
-| Flyway | — |
+| Flyway | 11.14.1 |
 | PostgreSQL | 16 |
 | Testcontainers | — |
 | Docker & Docker Compose | — |
 | Maven Wrapper | — |
 
 ---
-
-
