@@ -20,9 +20,13 @@ class JobMetricsTest {
         metrics.recordSuccess("SLEEP_JOB", 2_000_000_000L);
         metrics.recordSuccess("SLEEP_JOB", 4_000_000_000L);
         metrics.recordFailure("FAIL_JOB", 1_000_000_000L);
+        metrics.recordExpiredLeases(2);
+        metrics.recordStaleCompletionRejection();
 
 
         assertThat(metrics.getProcessedLastMinute()).isEqualTo(3);
+        assertThat(metrics.getExpiredLeases()).isEqualTo(2);
+        assertThat(metrics.getStaleCompletionRejections()).isEqualTo(1);
 
 
         Map<String, Long> failures = metrics.getFailuresByJobType();

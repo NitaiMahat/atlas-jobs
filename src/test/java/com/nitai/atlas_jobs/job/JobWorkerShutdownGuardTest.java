@@ -14,7 +14,16 @@ class JobWorkerShutdownGuardTest extends AbstractPostgresTest {
     JobRepository jobRepository;
 
     @Autowired
-    JobWorker jobWorker;
+    JobClaimService jobClaimService;
+
+    @Autowired
+    JobCompletionService completionService;
+
+    @Autowired
+    JobExecutor jobExecutor;
+
+    @Autowired
+    JobMetrics jobMetrics;
 
     @Autowired
     WorkerShutdownLatch shutdownLatch;
@@ -32,6 +41,8 @@ class JobWorkerShutdownGuardTest extends AbstractPostgresTest {
         jobRepository.saveAndFlush(job);
 
         shutdownLatch.signalShutdown();
+        JobWorker jobWorker = new JobWorker(jobClaimService, completionService, jobExecutor,
+                shutdownLatch, jobMetrics, true);
         jobWorker.pollAndExecuteOne();
 
         Job refreshed = jobRepository.findById(job.getJobId()).orElseThrow();

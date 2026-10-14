@@ -50,6 +50,12 @@ public class Job {
     @Column(name = "started_at")
     private OffsetDateTime startedAt;
 
+    @Column(name = "lease_generation", nullable = false)
+    private long leaseGeneration;
+
+    @Column(name = "lease_expires_at")
+    private OffsetDateTime leaseExpiresAt;
+
 
     protected Job() {
 
@@ -83,12 +89,16 @@ public class Job {
     public OffsetDateTime getNextRunAt(){return nextRunAt;}
     public String getWorkerId(){return workerId;}
     public OffsetDateTime getStartedAt() { return startedAt; }
+    public long getLeaseGeneration() { return leaseGeneration; }
+    public OffsetDateTime getLeaseExpiresAt() { return leaseExpiresAt; }
 
     // Small helpers
-    public void markRunning(String workerId) {
+    public void markRunning(String workerId, int runTimeoutMinutes, OffsetDateTime databaseTime) {
         this.status = JobStatus.RUNNING;
         this.workerId = workerId;
-        this.startedAt = OffsetDateTime.now();
+        this.leaseGeneration += 1;
+        this.startedAt = databaseTime;
+        this.leaseExpiresAt = this.startedAt.plusMinutes(runTimeoutMinutes);
         this.updatedAt = this.startedAt;
     }
 
@@ -98,11 +108,13 @@ public class Job {
         this.lastError = null;
         this.workerId = null;
         this.startedAt = null;
+        this.leaseExpiresAt = null;
         this.nextRunAt = OffsetDateTime.now();
         this.updatedAt = OffsetDateTime.now();
     }
     public void markSucceeded() {
         this.status = JobStatus.SUCCEEDED;
+        this.leaseExpiresAt = null;
         this.updatedAt = OffsetDateTime.now();
     }
 
@@ -110,6 +122,7 @@ public class Job {
         this.lastError = error;
         this.attemptCount += 1;
         this.updatedAt = OffsetDateTime.now();
+        this.leaseExpiresAt = null;
 
 
         if (this.attemptCount >= this.maxAttempts) {
@@ -121,6 +134,8 @@ public class Job {
         long delaySeconds = computeBackoffSeconds(this.attemptCount);
         this.nextRunAt = OffsetDateTime.now().plusSeconds(delaySeconds);
         this.status = JobStatus.QUEUED;
+        this.workerId = null;
+        this.startedAt = null;
     }
 
     private long computeBackoffSeconds(int attemptCount) {

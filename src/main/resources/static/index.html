@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10282d">
+  <title>Atlas Jobs · Queue Console</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail" aria-label="Application sidebar">
+      <a class="brand" href="/" aria-label="Atlas Jobs home"><span class="brand-mark" aria-hidden="true">A</span><span>ATLAS<span class="brand-sub">JOBS</span></span></a>
+      <div class="rail-section">
+        <div class="rail-label">WORKSPACE</div>
+        <div class="rail-link active"><span class="rail-icon" aria-hidden="true">◫</span> Queue overview</div>
+      </div>
+      <div class="rail-spacer"></div>
+      <div class="rail-foot"><span id="rail-dot" class="status-dot" aria-hidden="true"></span><span>PostgreSQL-backed queue</span></div>
+      <div class="rail-note">At-least-once execution<br>with fenced job state</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="crumb">Operations <span>/</span> Queue overview</div>
+        <div class="topbar-right"><span id="connection" class="connection"><span class="pulse-dot"></span> Connecting</span><span class="divider"></span><span id="last-updated">—</span></div>
+      </header>
+
+      <div class="page">
+        <section class="intro">
+          <div><div class="eyebrow"><span class="eyebrow-line"></span> JOB PROCESSING CONSOLE</div><h1>Queue overview<span class="title-period">.</span></h1><p>Submit work, watch ownership change, and inspect recovery as it happens.</p></div>
+          <button class="refresh-button" id="refresh-button" type="button"><span aria-hidden="true">↻</span> Refresh now</button>
+        </section>
+
+        <div id="error-banner" class="error-banner" role="alert" hidden></div>
+
+        <section class="summary-grid" aria-label="Queue status">
+          <article class="summary-card"><div class="summary-label"><span class="mini-square queued"></span> QUEUED</div><div id="queued-count" class="summary-value">—</div><div class="summary-caption">Waiting or scheduled</div></article>
+          <article class="summary-card"><div class="summary-label"><span class="mini-square running"></span> RUNNING</div><div id="running-count" class="summary-value">—</div><div class="summary-caption">Owned by workers</div></article>
+          <article class="summary-card"><div class="summary-label"><span class="mini-square succeeded"></span> SUCCEEDED</div><div id="succeeded-count" class="summary-value">—</div><div class="summary-caption">Completed jobs</div></article>
+          <article class="summary-card"><div class="summary-label"><span class="mini-square dead"></span> DEAD LETTERED</div><div id="dead-count" class="summary-value">—</div><div class="summary-caption">Needs attention</div></article>
+        </section>
+
+        <section class="demo-section" aria-labelledby="demo-heading">
+          <div class="demo-heading"><div><div class="overline">GUIDED DEMOS</div><h2 id="demo-heading">See the guarantees in action</h2><p>Run a live example, then use the talking points to explain what happened.</p></div><span class="demo-time">3 SCENARIOS</span></div>
+          <div class="demo-grid">
+            <article class="demo-card"><div class="demo-number">01 / JOB LIFECYCLE</div><h3>Claim to completion</h3><p>Creates a one-second sleep job. Watch it move from queued to running to succeeded in the inspector.</p><div class="demo-lesson"><strong>What I built</strong><span>A PostgreSQL-backed queue and a worker that claims and completes jobs.</span></div><div class="demo-lesson"><strong>What I learned</strong><span>Submission and execution have separate lifecycles; a successful HTTP request does not mean the work is finished.</span></div><button class="demo-button" data-demo="success" type="button">Run success demo</button></article>
+            <article class="demo-card"><div class="demo-number">02 / FAILURE HANDLING</div><h3>Retry to dead letter</h3><p>Creates an intentionally failing job with two allowed attempts. Watch its next eligible time, then its final status.</p><div class="demo-lesson"><strong>What I built</strong><span>Scheduled retries with backoff and a dead-letter state after the attempt limit.</span></div><div class="demo-lesson"><strong>What I learned</strong><span>Transient failures need a retry policy; permanent failures need a visible place for investigation.</span></div><button class="demo-button" data-demo="failure" type="button">Run retry demo</button></article>
+            <article class="demo-card"><div class="demo-number">03 / RECOVERY SAFETY</div><h3>Stale worker rejected</h3><p>The integration test expires a claim, lets another claim take over, and checks that the old generation cannot finish it.</p><div class="demo-lesson"><strong>What I built</strong><span>Lease generations and conditional completion and failure updates.</span></div><div class="demo-lesson"><strong>What I learned</strong><span>A lease protects the job row; external side effects still need their own idempotency or fencing.</span></div><code class="demo-command">.\mvnw.cmd -Dtest=JobLeaseFencingTest test</code><span class="demo-hint">Run from the repository root with Docker running.</span></article>
+          </div>
+          <div id="demo-message" class="demo-message" role="status" aria-live="polite"></div>
+        </section>
+
+        <div class="workspace-grid">
+          <section class="jobs-panel panel" aria-labelledby="jobs-heading">
+            <div class="panel-heading"><div><div class="overline">LIVE WORKLOAD</div><h2 id="jobs-heading">Recent jobs</h2><p>Newest submissions across all workers</p></div><div class="live-tag"><span class="pulse-dot"></span> AUTO REFRESH · 3S</div></div>
+            <div class="filters" role="group" aria-label="Filter jobs"><button class="filter active" data-filter="ALL" type="button">All jobs</button><button class="filter" data-filter="QUEUED" type="button">Queued</button><button class="filter" data-filter="RUNNING" type="button">Running</button><button class="filter" data-filter="SUCCEEDED" type="button">Succeeded</button><button class="filter" data-filter="DEAD_LETTERED" type="button">Dead lettered</button></div>
+            <div class="table-wrap"><table><thead><tr><th>JOB</th><th>STATUS</th><th>FAILURES</th><th>OWNER</th><th>CREATED</th><th><span class="sr-only">Details</span></th></tr></thead><tbody id="jobs-body"><tr><td colspan="6" class="empty-cell">Loading jobs…</td></tr></tbody></table></div>
+            <div class="table-footer"><span>Showing the 30 most recent submissions</span><span id="job-count">—</span></div>
+          </section>
+
+          <div class="side-column">
+            <section class="submit-panel panel" aria-labelledby="submit-heading"><div class="overline">NEW WORK</div><h2 id="submit-heading">Submit a job</h2><p class="panel-subtitle">Create a job and follow it through the queue.</p>
+              <form id="job-form">
+                <label for="job-type">JOB TYPE</label><select id="job-type" name="jobType"><option value="SLEEP_JOB">Sleep job</option><option value="FAIL_JOB">Fail job</option></select>
+                <div id="sleep-field"><label for="sleep-seconds">DURATION <span>SECONDS</span></label><input id="sleep-seconds" name="sleepSeconds" type="number" min="1" max="300" value="2" required></div>
+                <div id="fail-field" hidden><label for="fail-message">ERROR MESSAGE</label><input id="fail-message" name="failMessage" type="text" maxlength="200" value="Demo failure"></div>
+                <div class="form-row"><div><label for="max-attempts">MAX ATTEMPTS</label><input id="max-attempts" name="maxAttempts" type="number" min="1" max="10" value="3" required></div><div><label for="idempotency-key">IDEMPOTENCY KEY <span>OPTIONAL</span></label><input id="idempotency-key" name="idempotencyKey" type="text" maxlength="128" placeholder="e.g. demo-001"></div></div>
+                <button class="submit-button" id="submit-button" type="submit">Submit job <span aria-hidden="true">↗</span></button>
+                <div id="form-message" class="form-message" role="status" aria-live="polite"></div>
+              </form>
+            </section>
+
+            <section class="signals-panel panel" aria-labelledby="signals-heading"><div class="overline">RECOVERY SIGNALS</div><h2 id="signals-heading">System pulse</h2><div class="signal-row"><div><span>Oldest ready job</span><small>Time in eligible queue</small></div><strong id="queue-age">—</strong></div><div class="signal-row"><div><span>Expired leases</span><small>Recovered by this instance</small></div><strong id="expired-leases">—</strong></div><div class="signal-row"><div><span>Stale writes blocked</span><small>Rejected by this instance</small></div><strong id="stale-rejections">—</strong></div><div class="signal-foot">Counters reset when this application instance restarts.</div></section>
+          </div>
+        </div>
+
+        <footer class="page-foot"><span>ATLAS JOBS / QUEUE CONSOLE</span><span>PostgreSQL · Spring Boot · Flyway</span></footer>
+      </div>
+    </main>
+  </div>
+
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+  <aside id="job-drawer" class="job-drawer" aria-label="Job details" aria-hidden="true"><div class="drawer-top"><span class="overline">JOB INSPECTOR</span><button id="drawer-close" class="icon-button" type="button" aria-label="Close details">×</button></div><div id="drawer-content"></div></aside>
+</body>
+</html>

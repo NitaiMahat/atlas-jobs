@@ -21,6 +21,8 @@ public class JobMetrics {
     private final ConcurrentHashMap<String, LongAdder> failuresByType = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, LongAdder> totalDurationNanosByType = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, LongAdder> durationCountByType = new ConcurrentHashMap<>();
+    private final LongAdder staleCompletionRejections = new LongAdder();
+    private final LongAdder expiredLeases = new LongAdder();
 
     public JobMetrics() {
         for (int i = 0; i < WINDOW_SECONDS; i++) {
@@ -35,6 +37,11 @@ public class JobMetrics {
     public void recordFailure(String jobType, long durationNanos) {
         record(jobType, durationNanos, false);
     }
+
+    public void recordStaleCompletionRejection() { staleCompletionRejections.increment(); }
+    public void recordExpiredLeases(long count) { expiredLeases.add(count); }
+    public long getStaleCompletionRejections() { return staleCompletionRejections.sum(); }
+    public long getExpiredLeases() { return expiredLeases.sum(); }
 
     private void record(String jobType, long durationNanos, boolean success) {
         String type = normalize(jobType);

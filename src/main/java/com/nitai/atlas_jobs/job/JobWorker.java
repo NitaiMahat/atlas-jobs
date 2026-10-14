@@ -2,33 +2,34 @@ package com.nitai.atlas_jobs.job;
 
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 
 @Component
 public class JobWorker {
     private final WorkerShutdownLatch shutdownLatch;
     private final JobClaimService jobClaimService;
-    private final JobRepository jobRepository;
+    private final JobCompletionService completionService;
     private final JobExecutor jobExecutor;
     private final JobMetrics jobMetrics;
+    private final boolean workerEnabled;
 
     public JobWorker(JobClaimService jobClaimService,
-                     JobRepository jobRepository,
+                     JobCompletionService completionService,
                      JobExecutor jobExecutor,
                      WorkerShutdownLatch shutdownLatch,
-                     JobMetrics jobMetrics) {
+                     JobMetrics jobMetrics,
+                     @Value("${atlas.jobs.worker-enabled:true}") boolean workerEnabled) {
         this.jobClaimService = jobClaimService;
-        this.jobRepository = jobRepository;
+        this.completionService = completionService;
         this.jobExecutor = jobExecutor;
         this.shutdownLatch = shutdownLatch;
         this.jobMetrics = jobMetrics;
+        this.workerEnabled = workerEnabled;
     }
 
     @Scheduled(fixedDelay = 2000)
     public void pollAndExecuteOne() {
-        if (shutdownLatch.isShuttingDown()) return;
+        if (!workerEnabled || shutdownLatch.isShuttingDown()) return;
         var maybeJob = jobClaimService.claimNextJob();
         if (maybeJob.isEmpty()) return;
 
@@ -37,27 +38,19 @@ public class JobWorker {
 
         try {
             jobExecutor.execute(job);
-            completeSuccess(job.getJobId());
-            jobMetrics.recordSuccess(job.getJobType(), System.nanoTime() - startNanos);
         } catch (Exception e) {
-            completeFailure(job.getJobId(), e.getMessage());
-            jobMetrics.recordFailure(job.getJobType(), System.nanoTime() - startNanos);
+            if (completionService.completeFailure(job.getJobId(), job.getWorkerId(), job.getLeaseGeneration(), e.getMessage())) {
+                jobMetrics.recordFailure(job.getJobType(), System.nanoTime() - startNanos);
+            } else {
+                jobMetrics.recordStaleCompletionRejection();
+            }
+            return;
         }
-    }
 
-    @Transactional
-    public void completeSuccess(UUID jobId) {
-        Job job = jobRepository.findById(jobId).orElseThrow();
-        if (job.getStatus() != JobStatus.RUNNING) return;
-        job.markSucceeded();
-        jobRepository.saveAndFlush(job);
-    }
-
-    @Transactional
-    public void completeFailure(UUID jobId, String error) {
-        Job job = jobRepository.findById(jobId).orElseThrow();
-        if (job.getStatus() != JobStatus.RUNNING) return;
-        job.onFailureAndScheduleRetry(error);
-        jobRepository.saveAndFlush(job);
+        if (completionService.completeSuccess(job.getJobId(), job.getWorkerId(), job.getLeaseGeneration())) {
+            jobMetrics.recordSuccess(job.getJobType(), System.nanoTime() - startNanos);
+        } else {
+            jobMetrics.recordStaleCompletionRejection();
+        }
     }
 }

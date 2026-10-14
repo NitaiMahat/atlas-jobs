@@ -13,6 +13,11 @@ public class JobResponse {
     private int maxAttempts;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
+    private OffsetDateTime nextRunAt;
+    private OffsetDateTime leaseExpiresAt;
+    private String workerId;
+    private String lastError;
+    private long leaseGeneration;
 
     public static JobResponse from(Job job) {
         JobResponse r = new JobResponse();
@@ -23,6 +28,11 @@ public class JobResponse {
         r.maxAttempts = job.getMaxAttempts();
         r.createdAt = job.getCreatedAt();
         r.updatedAt = job.getUpdatedAt();
+        r.nextRunAt = job.getNextRunAt();
+        r.leaseExpiresAt = job.getLeaseExpiresAt();
+        r.workerId = job.getWorkerId();
+        r.lastError = job.getLastError();
+        r.leaseGeneration = job.getLeaseGeneration();
         return r;
     }
 
@@ -33,4 +43,9 @@ public class JobResponse {
     public int getMaxAttempts() { return maxAttempts; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
+    public OffsetDateTime getNextRunAt() { return nextRunAt; }
+    public OffsetDateTime getLeaseExpiresAt() { return leaseExpiresAt; }
+    public String getWorkerId() { return workerId; }
+    public String getLastError() { return lastError; }
+    public long getLeaseGeneration() { return leaseGeneration; }
 }

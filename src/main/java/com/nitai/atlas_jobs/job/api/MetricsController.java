@@ -53,8 +53,11 @@ public class MetricsController {
                 byWorker,
                 attemptDist,
                 scheduledForRetry,
+                jobRepository.oldestReadyJobWaitSeconds(),
                 recent,
                 processedLastMinute,
+                jobMetrics.getExpiredLeases(),
+                jobMetrics.getStaleCompletionRejections(),
                 failuresByJobType,
                 avgDurationSecondsByJobType
         );

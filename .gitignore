@@ -38,3 +38,8 @@ Thumbs.db
 .m2/
 # secrets
 .env
+
+# Local k6 output; keep benchmark scripts but not generated run summaries.
+load-tests/summary*.json
+__pycache__/
+*.pyc

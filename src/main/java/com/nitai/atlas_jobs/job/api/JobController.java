@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import com.nitai.atlas_jobs.job.InvalidJobPayloadException;
 import java.util.UUID;
+import java.util.List;
 
 @RestController
 @RequestMapping("/jobs")
@@ -34,6 +35,11 @@ public class JobController {
     public JobResponse getJob(@PathVariable UUID jobId) {
         Job job = jobService.getJob(jobId);
         return JobResponse.from(job);
+    }
+
+    @GetMapping
+    public List<JobResponse> recentJobs(@RequestParam(defaultValue = "30") int limit) {
+        return jobService.recentJobs(limit).stream().map(JobResponse::from).toList();
     }
     @PostMapping("/{jobId}/requeue")
     public JobResponse requeueJob(@PathVariable UUID jobId) {

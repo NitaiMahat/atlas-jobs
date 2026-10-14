@@ -3,6 +3,8 @@ spring:
     scheduling:
       enabled: false
 atlas:
+  jobs:
+    worker-enabled: false
   security:
     enabled: false
   rate-limit:

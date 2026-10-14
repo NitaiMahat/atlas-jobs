@@ -9,8 +9,11 @@ public record MetricsResponse(
         Map<String, Map<JobStatus, Long>> byWorker,
         Map<Integer, Long> attemptDistribution,
         long scheduledForRetry,
+        double oldestReadyJobWaitSeconds,
         MetricsWindow recent,
         long processedLastMinute,
+        long expiredLeases,
+        long staleCompletionRejections,
         Map<String, Long> failuresByJobType,
         Map<String, Double> avgDurationSecondsByJobType
 ) {

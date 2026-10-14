@@ -39,9 +39,9 @@ class StaleJobRecoveryServiceTest extends AbstractPostgresTest {
 
         jdbcTemplate.update(
                 "UPDATE jobs " +
-                        "SET status = 'RUNNING', started_at = ?, updated_at = ?, attempt_count = 0, max_attempts = 3, worker_id = ? " +
+                        "SET status = 'RUNNING', started_at = ?, updated_at = ?, lease_expires_at = ?, attempt_count = 0, max_attempts = 3, worker_id = ? " +
                         "WHERE job_id = ?",
-                ts, ts, "worker-1", job.getJobId()
+                ts, ts, ts, "worker-1", job.getJobId()
         );
 
         staleJobRecoveryService.recoverStaleRunningJobs();

@@ -5,8 +5,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.util.Collections;
 import java.util.Set;
+import java.util.concurrent.Future;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -25,7 +27,7 @@ class JobClaimConcurrencyTest extends AbstractPostgresTest {
     TransactionTemplate transactionTemplate;
 
     @Test
-    void twoWorkersNeverClaimSameJob() throws InterruptedException {
+    void twoWorkersNeverClaimSameJob() throws InterruptedException, ExecutionException {
         int jobCount = 20;
         for (int i = 0; i < jobCount; i++) {
             Job job = new Job(
@@ -39,10 +41,11 @@ class JobClaimConcurrencyTest extends AbstractPostgresTest {
             jobRepository.saveAndFlush(job);
         }
 
-        JobClaimService worker1 = new JobClaimService(jobRepository, "worker-1");
-        JobClaimService worker2 = new JobClaimService(jobRepository, "worker-2");
+        JobClaimService worker1 = new JobClaimService(jobRepository, "worker-1", 15);
+        JobClaimService worker2 = new JobClaimService(jobRepository, "worker-2", 15);
 
         Set<UUID> claimedIds = ConcurrentHashMap.newKeySet();
+        ConcurrentHashMap<UUID, AtomicInteger> claimCounts = new ConcurrentHashMap<>();
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
 
@@ -62,11 +65,12 @@ class JobClaimConcurrencyTest extends AbstractPostgresTest {
                 });
                 if (id == null) break;
                 claimedIds.add(id);
+                claimCounts.computeIfAbsent(id, ignored -> new AtomicInteger()).incrementAndGet();
             }
         };
 
-        executor.submit(claimLoop);
-        executor.submit(() -> {
+        Future<?> first = executor.submit(claimLoop);
+        Future<?> second = executor.submit(() -> {
             try {
                 start.await();
             } catch (InterruptedException e) {
@@ -82,13 +86,16 @@ class JobClaimConcurrencyTest extends AbstractPostgresTest {
                 });
                 if (id == null) break;
                 claimedIds.add(id);
+                claimCounts.computeIfAbsent(id, ignored -> new AtomicInteger()).incrementAndGet();
             }
         });
 
         start.countDown();
         executor.shutdown();
         assertThat(executor.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
-
+        first.get();
+        second.get();
         assertThat(claimedIds).hasSize(jobCount);
+        assertThat(claimCounts.values()).allSatisfy(count -> assertThat(count.get()).isEqualTo(1));
     }
 }

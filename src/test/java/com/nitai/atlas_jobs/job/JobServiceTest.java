@@ -34,4 +34,16 @@ class JobServiceTest extends AbstractPostgresTest {
                 .extracting(Job::getJobId)
                 .isEqualTo(first.getJobId());
     }
+
+    @Test
+    void recentJobsReturnsNewestSubmissionWithinLimit() {
+        CreateJobRequest request = new CreateJobRequest();
+        request.setJobType("SLEEP_JOB");
+        request.setPayload("{\"sleepSeconds\": 1}");
+        jobService.createJob(request, null);
+        Job newest = jobService.createJob(request, null);
+
+        assertThat(jobService.recentJobs(1)).extracting(Job::getJobId)
+                .containsExactly(newest.getJobId());
+    }
 }

@@ -60,6 +60,11 @@ public class JobService {
                 .orElseThrow(() -> new JobNotFoundException(jobId));
     }
 
+    public List<Job> recentJobs(int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 100));
+        return jobRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(0, safeLimit));
+    }
+
     @Transactional
     public Job requeueDeadLetter(UUID jobId) {
         Job job = jobRepository.findById(jobId)
